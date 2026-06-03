@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36414.22 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FlowDetective", "FlowDetective\FlowDetective.csproj", "{A31050F9-48D3-42B6-A476-3F9A7158C072}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestParsing", "TestParsing\TestParsing.csproj", "{0872D962-CACE-4319-938F-5246826781D0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A31050F9-48D3-42B6-A476-3F9A7158C072}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A31050F9-48D3-42B6-A476-3F9A7158C072}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A31050F9-48D3-42B6-A476-3F9A7158C072}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A31050F9-48D3-42B6-A476-3F9A7158C072}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0872D962-CACE-4319-938F-5246826781D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0872D962-CACE-4319-938F-5246826781D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0872D962-CACE-4319-938F-5246826781D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0872D962-CACE-4319-938F-5246826781D0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8D97BFD4-63AB-4FFD-B0F1-0D98B62C276B}
+	EndGlobalSection
+EndGlobal
