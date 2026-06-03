@@ -8,7 +8,9 @@ namespace FlowDetective
     public static class CssAnalyzer
     {
         // Simple declaration pattern used on extracted fragments
-        static readonly Regex DeclSimple = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;{}]+?)\s*(?:;|$)",
+        // Accept `;`, `}` or end-of-string as declaration terminators so declarations
+        // immediately before a closing brace are matched (handles .a{width:10px})
+        static readonly Regex DeclSimple = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;{}]+?)\s*(?:;|}|$)",
                                                RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // Inline style without semicolons: find prop:value pairs separated by whitespace or end
@@ -41,38 +43,42 @@ namespace FlowDetective
             cssText = StripBlockComments(cssText);
 
             var fragments = new List<(string fragment, int index, bool isInline)>();
-            if (cssText.IndexOf('<') >= 0)
+            bool looksLikeHtml = cssText.IndexOf('<') >= 0;
+
+            if (looksLikeHtml)
             {
+                // Only extract explicit style sources from HTML: <style> blocks and inline style attributes.
                 foreach (Match m in StyleBlockPattern.Matches(cssText))
                     fragments.Add((m.Groups["css"].Value, m.Index, false));
 
                 foreach (Match m in InlineStylePattern.Matches(cssText))
                     fragments.Add((m.Groups["css"].Value, m.Index, true));
-
-                fragments.Add((cssText, 0, false));
             }
             else
             {
+                // For pure CSS, extract rule bodies and the whole text as fallback
                 var bracePattern = new Regex(@"\{(?<body>[^}]*)\}", RegexOptions.Compiled);
                 foreach (Match m in bracePattern.Matches(cssText))
                     fragments.Add((m.Groups["body"].Value, m.Index, false));
 
+                // Add the whole text too (handles top-level declarations / minified)
                 fragments.Add((cssText, 0, false));
             }
 
-            // Collect all declarations first (including media-feature ones)
+            // Collect all declarations first (including media-feature ones) from fragments only
             var decls = new List<(string prop, string rawValue, int index)>();
 
-            foreach (Match m in MediaFeaturePattern.Matches(cssText))
-            {
-                var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
-                var rawValue = m.Groups["value"].Value.Trim();
-                decls.Add((prop, rawValue, m.Index));
-            }
-
-            foreach (var (fragment, idx, isInline) in fragments)
+            foreach (var (fragment, fragIdx, isInline) in fragments)
             {
                 if (string.IsNullOrWhiteSpace(fragment)) continue;
+
+                // Extract media-feature declarations from fragment as well (catches @media inside style blocks)
+                foreach (Match m in MediaFeaturePattern.Matches(fragment))
+                {
+                    var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
+                    var rawValue = m.Groups["value"].Value.Trim();
+                    decls.Add((prop, rawValue, fragIdx + m.Index));
+                }
 
                 if (isInline)
                 {
@@ -88,7 +94,7 @@ namespace FlowDetective
                             {
                                 var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
                                 var rawValue = m.Groups["value"].Value.Trim();
-                                int absoluteIndex = idx + fragment.IndexOf(part, StringComparison.Ordinal);
+                                int absoluteIndex = fragIdx + fragment.IndexOf(part, StringComparison.Ordinal);
                                 decls.Add((prop, rawValue, absoluteIndex));
                             }
                             else
@@ -99,7 +105,7 @@ namespace FlowDetective
                                 {
                                     var prop = m2.Groups["prop"].Value.Trim().ToLowerInvariant();
                                     var rawValue = m2.Groups["value"].Value.Trim();
-                                    int absoluteIndex = idx + fragment.IndexOf(part, StringComparison.Ordinal);
+                                    int absoluteIndex = fragIdx + fragment.IndexOf(part, StringComparison.Ordinal);
                                     decls.Add((prop, rawValue, absoluteIndex));
                                 }
                             }
@@ -112,7 +118,7 @@ namespace FlowDetective
                         {
                             var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
                             var rawValue = m.Groups["value"].Value.Trim();
-                            int absoluteIndex = idx + m.Index;
+                            int absoluteIndex = fragIdx + m.Index;
                             decls.Add((prop, rawValue, absoluteIndex));
                         }
                     }
@@ -123,7 +129,7 @@ namespace FlowDetective
                     {
                         var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
                         var rawValue = m.Groups["value"].Value.Trim();
-                        int absoluteIndex = idx + m.Index;
+                        int absoluteIndex = fragIdx + m.Index;
                         decls.Add((prop, rawValue, absoluteIndex));
                     }
                 }
