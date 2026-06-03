@@ -29,6 +29,9 @@ namespace FlowDetective
         {
             if (cssText is null) return new List<HTMLProcessor.PxProperty>();
 
+            // Strip CSS block comments to handle /* ... */ safely
+            cssText = StripBlockComments(cssText);
+
             var fragments = new List<(string fragment, int index)>();
             // If input contains HTML-ish content, extract style blocks and inline styles
             if (cssText.IndexOf('<') >= 0)
@@ -88,6 +91,12 @@ namespace FlowDetective
             }
 
             return results;
+        }
+
+        static string StripBlockComments(string cssText)
+        {
+            // Remove /* ... */ block comments
+            return Regex.Replace(cssText, @"/\*.*?\*/", " ", RegexOptions.Singleline);
         }
 
         static void ProcessDeclaration(string cssText, int matchIndex, string prop, string rawValue, List<HTMLProcessor.PxProperty> results, HashSet<string> seen)
