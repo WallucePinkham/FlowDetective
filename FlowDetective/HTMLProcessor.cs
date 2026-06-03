@@ -9,7 +9,9 @@ namespace FlowDetective
     {
         public record PxProperty(int LineNumber, string Property, string Value, bool AffectsLayout);
 
-        public static List<PxProperty> ProcessFile(string filePath)
+        // followLinks: when true, resolve <link rel="stylesheet" href="..."> references
+        // relative to the HTML file and include their CSS declarations.
+        public static List<PxProperty> ProcessFile(string filePath, bool followLinks = false)
         {
             if (!File.Exists(filePath))
                 throw new FileNotFoundException($"File not found: {filePath}", filePath);
@@ -18,7 +20,56 @@ namespace FlowDetective
                 return new List<PxProperty>();
 
             var text = File.ReadAllText(filePath);
-            return ProcessText(text);
+
+            var combined = new List<HTMLProcessor.PxProperty>();
+
+            // Analyze HTML text (style blocks and inline styles)
+            combined.AddRange(CssAnalyzer.Analyze(text));
+
+            if (followLinks)
+            {
+                // Find <link rel="stylesheet" href="..."> occurrences and include referenced CSS files.
+                // Basic extraction to support relative and absolute file paths. Ignore remote URLs.
+                var linkPattern = new System.Text.RegularExpressions.Regex(
+                    @"<link\b[^>]*rel\s*=\s*[""']?stylesheet[""']?[^>]*href\s*=\s*[""'](?<href>[^""']+)[""']",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+                var dir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "";
+
+                foreach (System.Text.RegularExpressions.Match m in linkPattern.Matches(text))
+                {
+                    var href = m.Groups["href"].Value.Trim();
+                    if (string.IsNullOrEmpty(href)) continue;
+
+                    // Skip remote URLs (http/https)
+                    if (Uri.TryCreate(href, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+                        continue;
+
+                    string candidate;
+                    if (Path.IsPathRooted(href))
+                        candidate = href;
+                    else
+                        candidate = Path.GetFullPath(Path.Combine(dir, href));
+
+                    if (File.Exists(candidate))
+                    {
+                        try
+                        {
+                            var cssText = File.ReadAllText(candidate);
+                            combined.AddRange(CssAnalyzer.Analyze(cssText));
+                        }
+                        catch
+                        {
+                            // ignore individual link read/parse failures
+                        }
+                    }
+                }
+            }
+
+            // Filter same as ProcessText: only layout-affecting and not visual-only
+            return combined
+                .Where(e => e.AffectsLayout && !PropertyLists.VisualOnlyProps.Contains(e.Property))
+                .ToList();
         }
 
         public static List<PxProperty> ProcessText(string htmlText)
