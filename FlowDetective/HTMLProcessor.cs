@@ -24,45 +24,61 @@ namespace FlowDetective
             var combined = new List<HTMLProcessor.PxProperty>();
 
             // Analyze HTML/JSX/TSX text (style blocks, inline styles, JSX inline style objects)
-            combined.AddRange(CssAnalyzer.Analyze(text));
+            // Be defensive: if the analyzer throws for malformed input, return an empty list rather than crash.
+            try
+            {
+                combined.AddRange(CssAnalyzer.Analyze(text));
+            }
+            catch
+            {
+                // Analyzer failed on this input; per requirement, do not crash when .jsx/.tsx passed.
+                return new List<PxProperty>();
+            }
 
             if (followLinks)
             {
-                // Find <link rel="stylesheet" href="..."> occurrences and include referenced CSS files.
-                // Basic extraction to support relative and absolute file paths. Ignore remote URLs.
-                var linkPattern = new System.Text.RegularExpressions.Regex(
-                    @"<link\b[^>]*rel\s*=\s*[""']?stylesheet[""']?[^>]*href\s*=\s*[""'](?<href>[^""']+)[""']",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
-
-                var dir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "";
-
-                foreach (System.Text.RegularExpressions.Match m in linkPattern.Matches(text))
+                try
                 {
-                    var href = m.Groups["href"].Value.Trim();
-                    if (string.IsNullOrEmpty(href)) continue;
+                    // Find <link rel="stylesheet" href="..."> occurrences and include referenced CSS files.
+                    // Basic extraction to support relative and absolute file paths. Ignore remote URLs.
+                    var linkPattern = new System.Text.RegularExpressions.Regex(
+                        @"<link\b[^>]*rel\s*=\s*[""']?stylesheet[""']?[^>]*href\s*=\s*[""'](?<href>[^""']+)[""']",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
-                    // Skip remote URLs (http/https)
-                    if (Uri.TryCreate(href, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
-                        continue;
+                    var dir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "";
 
-                    string candidate;
-                    if (Path.IsPathRooted(href))
-                        candidate = href;
-                    else
-                        candidate = Path.GetFullPath(Path.Combine(dir, href));
-
-                    if (File.Exists(candidate))
+                    foreach (System.Text.RegularExpressions.Match m in linkPattern.Matches(text))
                     {
-                        try
+                        var href = m.Groups["href"].Value.Trim();
+                        if (string.IsNullOrEmpty(href)) continue;
+
+                        // Skip remote URLs (http/https)
+                        if (Uri.TryCreate(href, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+                            continue;
+
+                        string candidate;
+                        if (Path.IsPathRooted(href))
+                            candidate = href;
+                        else
+                            candidate = Path.GetFullPath(Path.Combine(dir, href));
+
+                        if (File.Exists(candidate))
                         {
-                            var cssText = File.ReadAllText(candidate);
-                            combined.AddRange(CssAnalyzer.Analyze(cssText));
-                        }
-                        catch
-                        {
-                            // ignore individual link read/parse failures
+                            try
+                            {
+                                var cssText = File.ReadAllText(candidate);
+                                combined.AddRange(CssAnalyzer.Analyze(cssText));
+                            }
+                            catch
+                            {
+                                // ignore individual link read/parse failures
+                            }
                         }
                     }
+                }
+                catch
+                {
+                    // Defensive: if link extraction/parsing fails, don't crash; continue with what we have.
                 }
             }
 
