@@ -39,7 +39,7 @@ namespace FlowDetective
                 if (IsHtmlExtension(ext))
                 {
                     var entries = HTMLProcessor.ProcessText(text);
-                    Console.WriteLine($"Scanning HTML: {file}");
+                    Console.WriteLine($"Scanning HTML/JSX/TSX: {file}");
                     WriteEntries(entries);
                 }
                 else if (string.Equals(ext, ".css", StringComparison.OrdinalIgnoreCase))
@@ -61,7 +61,9 @@ namespace FlowDetective
 
         static bool IsHtmlExtension(string ext) =>
             string.Equals(ext, ".html", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ext, ".htm", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(ext, ".htm", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ext, ".jsx", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(ext, ".tsx", StringComparison.OrdinalIgnoreCase);
 
         static void WriteEntries(System.Collections.Generic.IEnumerable<HTMLProcessor.PxProperty> entries)
         {

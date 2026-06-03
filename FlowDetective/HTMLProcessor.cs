@@ -23,7 +23,7 @@ namespace FlowDetective
 
             var combined = new List<HTMLProcessor.PxProperty>();
 
-            // Analyze HTML text (style blocks and inline styles)
+            // Analyze HTML/JSX/TSX text (style blocks, inline styles, JSX inline style objects)
             combined.AddRange(CssAnalyzer.Analyze(text));
 
             if (followLinks)
@@ -85,7 +85,9 @@ namespace FlowDetective
         {
             var ext = Path.GetExtension(filePath);
             return string.Equals(ext, ".html", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(ext, ".htm", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(ext, ".htm", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ext, ".jsx", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(ext, ".tsx", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -9,13 +9,21 @@ namespace FlowDetective
     {
         // Simple declaration pattern used on extracted fragments
         // Accept `;`, `}` or end-of-string as declaration terminators so declarations
-        // immediately before a closing brace are matched (handles .a{width:10px})
+        // immediately before a closing brace are matched.
         static readonly Regex DeclSimple = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;{}]+?)\s*(?:;|}|$)",
                                                RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // Inline style without semicolons: find prop:value pairs separated by whitespace or end
         static readonly Regex InlineNoSemicolonPattern = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;]+?)(?=(?:\s+[\w-]+\s*:)|$)",
                                                                RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // JS(X) inline style object: style={{ width: '100px', height: 50 }}
+        static readonly Regex InlineJsxStylePattern = new(@"style\s*=\s*\{\s*\{(?<css>.*?)\}\s*\}",
+                                                            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // HTML inline style attribute extractor (style="...")
+        static readonly Regex InlineStylePattern = new(@"style\s*=\s*[""'](?<css>[^""']+)[""']",
+                                                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // Media-feature pattern, e.g. (max-width:600px)
         static readonly Regex MediaFeaturePattern = new(@"\(\s*(?<prop>[\w-]+)\s*:\s*(?<value>[^)]+?)\s*\)",
@@ -28,10 +36,6 @@ namespace FlowDetective
         // <style> block extractor
         static readonly Regex StyleBlockPattern = new(@"<style\b[^>]*>(?<css>.*?)<\/style>",
                                                        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-
-        // Inline style attribute extractor
-        static readonly Regex InlineStylePattern = new(@"style\s*=\s*[""'](?<css>[^""']+)[""']",
-                                                        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         static readonly Regex NumericOnly = new(@"^-?\d+(\.\d+)?$", RegexOptions.Compiled);
 
@@ -47,12 +51,22 @@ namespace FlowDetective
 
             if (looksLikeHtml)
             {
-                // Only extract explicit style sources from HTML: <style> blocks and inline style attributes.
+                // Extract <style> blocks
                 foreach (Match m in StyleBlockPattern.Matches(cssText))
                     fragments.Add((m.Groups["css"].Value, m.Index, false));
 
+                // HTML inline style attributes
                 foreach (Match m in InlineStylePattern.Matches(cssText))
                     fragments.Add((m.Groups["css"].Value, m.Index, true));
+
+                // JSX/TSX inline style objects (style={{ ... }})
+                foreach (Match m in InlineJsxStylePattern.Matches(cssText))
+                {
+                    var jsxBody = m.Groups["css"].Value;
+                    var converted = ConvertJsxStyleObjectToCss(jsxBody);
+                    if (!string.IsNullOrWhiteSpace(converted))
+                        fragments.Add((converted, m.Index, true));
+                }
             }
             else
             {
@@ -224,6 +238,38 @@ namespace FlowDetective
             if ((prop == "width" || prop == "height" || prop.StartsWith("min-") || prop.StartsWith("max-")) && (hasPx || hasUnitlessNumber)) return true;
 
             return false;
+        }
+
+        static string ConvertJsxStyleObjectToCss(string jsxBody)
+        {
+            if (string.IsNullOrWhiteSpace(jsxBody)) return string.Empty;
+
+            // Match key: value pairs inside the JS object. Values may be quoted strings or bare numbers.
+            var pairPattern = new Regex(@"(?<key>[\w$]+)\s*:\s*(?<val>('([^'\\]|\\.)*'|""([^""\\]|\\.)*""|[^,}]+))", RegexOptions.Compiled | RegexOptions.Singleline);
+            var parts = new List<string>();
+
+            foreach (Match m in pairPattern.Matches(jsxBody))
+            {
+                var key = m.Groups["key"].Value.Trim();
+                var val = m.Groups["val"].Value.Trim();
+
+                // Normalize key from camelCase to kebab-case
+                var kebab = Regex.Replace(key, @"([a-z0-9])([A-Z])", "$1-$2").ToLowerInvariant();
+
+                // Trim quotes if present
+                if ((val.StartsWith("'") && val.EndsWith("'")) || (val.StartsWith("\"") && val.EndsWith("\"")))
+                {
+                    val = val.Substring(1, val.Length - 2);
+                }
+
+                // Remove trailing commas/spaces
+                val = val.Trim().TrimEnd(',');
+
+                parts.Add($"{kebab}:{val}");
+            }
+
+            // Join using semicolons so downstream parser sees normal CSS declarations
+            return string.Join(";", parts);
         }
     }
 }
