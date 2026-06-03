@@ -11,6 +11,10 @@ namespace FlowDetective
         static readonly Regex DeclSimple = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;{}]+?)\s*(?:;|$)",
                                                RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Inline style without semicolons: find prop:value pairs separated by whitespace or end
+        static readonly Regex InlineNoSemicolonPattern = new(@"(?<prop>[\w-]+)\s*:\s*(?<value>[^;]+?)(?=(?:\s+[\w-]+\s*:)|$)",
+                                                               RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
         // Media-feature pattern, e.g. (max-width:600px)
         static readonly Regex MediaFeaturePattern = new(@"\(\s*(?<prop>[\w-]+)\s*:\s*(?<value>[^)]+?)\s*\)",
                                                         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -36,24 +40,24 @@ namespace FlowDetective
             // Strip comments first
             cssText = StripBlockComments(cssText);
 
-            var fragments = new List<(string fragment, int index)>();
+            var fragments = new List<(string fragment, int index, bool isInline)>();
             if (cssText.IndexOf('<') >= 0)
             {
                 foreach (Match m in StyleBlockPattern.Matches(cssText))
-                    fragments.Add((m.Groups["css"].Value, m.Index));
+                    fragments.Add((m.Groups["css"].Value, m.Index, false));
 
                 foreach (Match m in InlineStylePattern.Matches(cssText))
-                    fragments.Add((m.Groups["css"].Value, m.Index));
+                    fragments.Add((m.Groups["css"].Value, m.Index, true));
 
-                fragments.Add((cssText, 0));
+                fragments.Add((cssText, 0, false));
             }
             else
             {
                 var bracePattern = new Regex(@"\{(?<body>[^}]*)\}", RegexOptions.Compiled);
                 foreach (Match m in bracePattern.Matches(cssText))
-                    fragments.Add((m.Groups["body"].Value, m.Index));
+                    fragments.Add((m.Groups["body"].Value, m.Index, false));
 
-                fragments.Add((cssText, 0));
+                fragments.Add((cssText, 0, false));
             }
 
             // Collect all declarations first (including media-feature ones)
@@ -66,15 +70,62 @@ namespace FlowDetective
                 decls.Add((prop, rawValue, m.Index));
             }
 
-            foreach (var (fragment, idx) in fragments)
+            foreach (var (fragment, idx, isInline) in fragments)
             {
                 if (string.IsNullOrWhiteSpace(fragment)) continue;
-                foreach (Match m in DeclSimple.Matches(fragment))
+
+                if (isInline)
                 {
-                    var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
-                    var rawValue = m.Groups["value"].Value.Trim();
-                    int absoluteIndex = idx + m.Index;
-                    decls.Add((prop, rawValue, absoluteIndex));
+                    // Inline style: handle both semicolon-delimited and space-delimited declarations
+                    if (fragment.Contains(';'))
+                    {
+                        foreach (var part in fragment.Split(';'))
+                        {
+                            var trimmed = part.Trim();
+                            if (string.IsNullOrEmpty(trimmed)) continue;
+                            var m = DeclSimple.Match(trimmed + ";"); // ensure pattern sees terminator
+                            if (m.Success)
+                            {
+                                var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
+                                var rawValue = m.Groups["value"].Value.Trim();
+                                int absoluteIndex = idx + fragment.IndexOf(part, StringComparison.Ordinal);
+                                decls.Add((prop, rawValue, absoluteIndex));
+                            }
+                            else
+                            {
+                                // fallback: attempt prop:value extraction
+                                var m2 = Regex.Match(trimmed, @"(?<prop>[\w-]+)\s*:\s*(?<value>.+)", RegexOptions.IgnoreCase);
+                                if (m2.Success)
+                                {
+                                    var prop = m2.Groups["prop"].Value.Trim().ToLowerInvariant();
+                                    var rawValue = m2.Groups["value"].Value.Trim();
+                                    int absoluteIndex = idx + fragment.IndexOf(part, StringComparison.Ordinal);
+                                    decls.Add((prop, rawValue, absoluteIndex));
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No semicolons — use inline pattern to find successive prop:value pairs
+                        foreach (Match m in InlineNoSemicolonPattern.Matches(fragment))
+                        {
+                            var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
+                            var rawValue = m.Groups["value"].Value.Trim();
+                            int absoluteIndex = idx + m.Index;
+                            decls.Add((prop, rawValue, absoluteIndex));
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (Match m in DeclSimple.Matches(fragment))
+                    {
+                        var prop = m.Groups["prop"].Value.Trim().ToLowerInvariant();
+                        var rawValue = m.Groups["value"].Value.Trim();
+                        int absoluteIndex = idx + m.Index;
+                        decls.Add((prop, rawValue, absoluteIndex));
+                    }
                 }
             }
 
