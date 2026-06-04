@@ -2,6 +2,10 @@
 
 Lightweight tool to find fixed-unit (px) CSS values that may affect layout. Parses CSS, HTML, JSX and TSX sources and reports layout-affecting declarations while filtering known visual-only properties.
 
+******
+NOTE: This application was 100% written by AI, verify the code before you trust it!
+******
+
 Features
 - Parse .css files, <style> blocks and inline style attributes
 - Support for .html, .htm, .jsx and .tsx files (including simple JSX style objects: style={{...}})
@@ -66,4 +70,4 @@ Contributing
 - Open issues and PRs welcome. Add tests for new cases and keep changes small and focused.
 
 License
-- MIT License — see LICENSE file.
+- MIT License â€” see LICENSE file.
